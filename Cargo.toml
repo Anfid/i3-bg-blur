@@ -1,0 +1,7 @@
+[package]
+name = "wpblur"
+version = "0.1.0"
+authors = ["Mikhail Pogretskiy <mpogret@mera.ru>"]
+
+[dependencies]
+image = "*"
