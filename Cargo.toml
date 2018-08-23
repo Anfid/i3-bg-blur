@@ -5,3 +5,4 @@ authors = ["Mikhail Pogretskiy <mpogret@mera.ru>"]
 
 [dependencies]
 image = "*"
+i3ipc = "*"
