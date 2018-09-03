@@ -2,8 +2,6 @@ extern crate i3ipc;
 extern crate image;
 
 use std::env;
-use std::fs::File;
-use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
@@ -24,20 +22,21 @@ fn main() {
         println!("{}", arg);
     }
 
-    std::fs::create_dir_all(home.join(".cache/i3-bg-blur"));
+    std::fs::create_dir_all(home.join(".cache/i3-bg-blur"))
+        .expect("Error while creating cache dir");
 
     let bg_path_file_path = home.as_path().join(Path::new(".cache/wal/wal"));
 
     loop {
         // Give time for i3 to load and wal to set wallpaper
-        std::thread::sleep(std::time::Duration::new(1,0));
+        std::thread::sleep(std::time::Duration::new(1, 0));
 
-        let bg_path = {
-            let mut bg_path_file =
-                File::open(&bg_path_file_path).expect("Background image path file not found.");
-            let mut bg_path_string = String::new();
-            bg_path_file.read_to_string(&mut bg_path_string);
-            PathBuf::from(bg_path_string)
+        let bg_path = match std::fs::read_to_string(&bg_path_file_path) {
+            Ok(r) => PathBuf::from(r),
+            Err(e) => {
+                println!("Error reading {:?}: {}", &bg_path_file_path, e);
+                continue;
+            }
         };
 
         println!("Current background image: {:?}", bg_path);
@@ -107,8 +106,6 @@ fn work(receiver: Receiver<bool>, bg_path: PathBuf, transitions: u8) {
 
     let home = env::home_dir().expect("Can't get home directory"); // home
     let mut bg_current = home.as_path().join(Path::new(".cache/i3-bg-blur/filename"));
-    bg_current.set_file_name(1.to_string());
-    bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
 
     let mut blur = false;
     let mut i = 0;
@@ -192,7 +189,12 @@ fn listen(sender: Sender<bool>) {
             },
             Ok(Event::WorkspaceEvent(event)) => match event.change {
                 WorkspaceChange::Focus => {
-                    if event.current.expect("Failed getting current workspace").nodes.is_empty() {
+                    if event
+                        .current
+                        .expect("Failed getting current workspace")
+                        .nodes
+                        .is_empty()
+                    {
                         send_result = sender.send(false);
                     } else {
                         send_result = sender.send(true);
