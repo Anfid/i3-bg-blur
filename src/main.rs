@@ -125,15 +125,21 @@ fn work(receiver: Receiver<bool>, bg_path: PathBuf, transitions: u8) {
             bg_current.set_file_name((i - 1).to_string());
             bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
             println!("Setting {:?}", bg_current);
-            std::process::Command::new("feh")
+            if let Err(e) = std::process::Command::new("feh")
                 .arg("--bg-fill")
                 .arg(&bg_current)
-                .spawn();
+                .spawn()
+            {
+                // Reset i in case of feh fail
+                i -= 1;
+                println!("Error setting background image: {:?}", e);
+            }
         } else if !blur && i != 0 {
             i -= 1;
+            let result;
             if i == 0 {
                 println!("Setting {:?}", bg_path);
-                std::process::Command::new("feh")
+                result = std::process::Command::new("feh")
                     .arg("--bg-fill")
                     .arg(&bg_path)
                     .spawn();
@@ -141,10 +147,16 @@ fn work(receiver: Receiver<bool>, bg_path: PathBuf, transitions: u8) {
                 bg_current.set_file_name((i - 1).to_string());
                 bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
                 println!("Setting {:?}", bg_current);
-                std::process::Command::new("feh")
+                result = std::process::Command::new("feh")
                     .arg("--bg-fill")
                     .arg(&bg_current)
                     .spawn();
+            }
+
+            if let Err(e) = result {
+                // Reset i in case of feh fail
+                i += 1;
+                println!("Error setting background image: {:?}", e);
             }
         }
 
