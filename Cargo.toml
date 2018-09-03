@@ -1,5 +1,5 @@
 [package]
-name = "wpblur"
+name = "i3-bg-blur"
 version = "0.1.0"
 authors = ["Mikhail Pogretskiy <mpogret@mera.ru>"]
 

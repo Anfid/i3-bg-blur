@@ -19,30 +19,30 @@ fn main() {
         println!("{}", arg);
     }
 
-    std::fs::create_dir_all(home.join(".cache/wp_blur"));
+    std::fs::create_dir_all(home.join(".cache/i3-bg-blur"));
 
-    let wp_path_file_path = home.as_path().join(Path::new(".cache/wal/wal"));
+    let bg_path_file_path = home.as_path().join(Path::new(".cache/wal/wal"));
 
     loop {
-        let mut wp_path_file = File::open(&wp_path_file_path).expect("Wallpaper path file not found");
-        let mut wallpaper_path_string = String::new();
-        wp_path_file.read_to_string(&mut wallpaper_path_string);
-        drop(wp_path_file);
-        println!("Current wallpaper: {}", wallpaper_path_string);
-        let wallpaper_path = PathBuf::from(wallpaper_path_string);
-        let wallpaper = Arc::new(image::open(&wallpaper_path).unwrap());
+        let mut bg_path_file = File::open(&bg_path_file_path).expect("Background image path file not found");
+        let mut bg_path_string = String::new();
+        bg_path_file.read_to_string(&mut bg_path_string);
+        drop(bg_path_file);
+        println!("Current background image: {}", bg_path_string);
+        let bg_path = PathBuf::from(bg_path_string);
+        let bg = Arc::new(image::open(&bg_path).unwrap());
 
         let mut threads = vec![];
         for i in 0..transitions {
-            let wp = wallpaper.clone();
+            let bg = bg.clone();
             let mut blured_path = home.clone();
-            let wp_ext = wallpaper_path.extension().unwrap().to_os_string();
+            let bg_ext = bg_path.extension().unwrap().to_os_string();
 
             threads.push(thread::spawn(move || {
-                let blured = wp.blur(12.0 / transitions as f32 * (i + 1) as f32);
-                blured_path = blured_path.join(".cache/wp_blur/filename"); // Filename gets stripped with set_file_name()
+                let blured = bg.blur(12.0 / transitions as f32 * (i + 1) as f32);
+                blured_path = blured_path.join(".cache/i3-bg-blur/filename"); // Filename gets stripped with set_file_name()
                 blured_path.set_file_name(i.to_string());
-                blured_path.set_extension(wp_ext);
+                blured_path.set_extension(bg_ext);
                 println!("Blur for {}; Path: {:?}", 12.0 / transitions as f32 * (i + 1) as f32, blured_path);
                 println!("{:?}", blured.save(Path::new(blured_path.as_path())));
                 println!("{}", i);
@@ -51,7 +51,7 @@ fn main() {
         for thread in threads {
             thread.join().unwrap();
         }
-        drop(wallpaper);
+        drop(bg);
 
         let (send, recv) = channel();
         let listener = thread::spawn(move || {
@@ -59,7 +59,7 @@ fn main() {
         });
 
         let worker = thread::spawn(move || {
-            work(recv, PathBuf::from(wallpaper_path), transitions);
+            work(recv, PathBuf::from(bg_path), transitions);
         });
         println!("Main: {:?}", listener.join());
     }
@@ -82,13 +82,13 @@ fn current_workspace_is_empty(connection: &mut I3Connection) -> bool {
     false
 }
 
-fn work(receiver: Receiver<bool>, wallpaper_path: PathBuf, transitions: u8) {
+fn work(receiver: Receiver<bool>, bg_path: PathBuf, transitions: u8) {
     println!("Worker created");
 
     let home = env::home_dir().expect("Can't get home directory"); // home
-    let mut wallpaper_current = home.as_path().join(Path::new(".cache/wp_blur/filename"));
-    wallpaper_current.set_file_name(1.to_string());
-    wallpaper_current.set_extension(wallpaper_path.extension().unwrap().to_os_string());
+    let mut bg_current = home.as_path().join(Path::new(".cache/i3-bg-blur/filename"));
+    bg_current.set_file_name(1.to_string());
+    bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
 
     let mut blur = false;
     let mut i = 0;
@@ -105,28 +105,28 @@ fn work(receiver: Receiver<bool>, wallpaper_path: PathBuf, transitions: u8) {
 
         if blur && i != transitions {
             i += 1;
-            wallpaper_current.set_file_name((i-1).to_string());
-            wallpaper_current.set_extension(wallpaper_path.extension().unwrap().to_os_string());
-            println!("Setting {:?}", wallpaper_current);
+            bg_current.set_file_name((i-1).to_string());
+            bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
+            println!("Setting {:?}", bg_current);
             std::process::Command::new("feh")
                 .arg("--bg-fill")
-                .arg(&wallpaper_current)
+                .arg(&bg_current)
                 .spawn();
         } else if !blur && i != 0 {
             i -= 1;
             if i == 0 {
-                println!("Setting {:?}", wallpaper_path);
+                println!("Setting {:?}", bg_path);
                 std::process::Command::new("feh")
                     .arg("--bg-fill")
-                    .arg(&wallpaper_path)
+                    .arg(&bg_path)
                     .spawn();
             } else {
-                wallpaper_current.set_file_name((i-1).to_string());
-                wallpaper_current.set_extension(wallpaper_path.extension().unwrap().to_os_string());
-                println!("Setting {:?}", wallpaper_current);
+                bg_current.set_file_name((i-1).to_string());
+                bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
+                println!("Setting {:?}", bg_current);
                 std::process::Command::new("feh")
                     .arg("--bg-fill")
-                    .arg(&wallpaper_current)
+                    .arg(&bg_current)
                     .spawn();
             }
         }
