@@ -2,6 +2,9 @@
 name = "i3-bg-blur"
 version = "0.1.0"
 authors = ["Mikhail Pogretskiy <mikhail.pogretskiy@gmail.com>"]
+description = "Blurs the background image in the i3wm if any window is focused"
+repository = "https://github.com/Anfid/i3-bg-blur"
+license = "GPL-3.0"
 
 [dependencies]
 image = "*"
