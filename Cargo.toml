@@ -7,5 +7,5 @@ repository = "https://github.com/Anfid/i3-bg-blur"
 license = "GPL-3.0"
 
 [dependencies]
-image = "*"
-i3ipc = "*"
+image = "~0.19"
+i3ipc = "~0.8"
