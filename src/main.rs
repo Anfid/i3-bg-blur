@@ -125,38 +125,57 @@ fn work(receiver: Receiver<bool>, bg_path: PathBuf, transitions: u8) {
             bg_current.set_file_name((i - 1).to_string());
             bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
             println!("Setting {:?}", bg_current);
-            if let Err(e) = std::process::Command::new("feh")
+            let mut success = false;
+            if let Ok(mut handle) = std::process::Command::new("feh")
                 .arg("--bg-fill")
                 .arg(&bg_current)
                 .spawn()
             {
+                match handle.wait() {
+                    Ok(_) =>  success = true,
+                    Err(_) => success = false
+                }
+            }
+            if !success {
                 // Reset i in case of feh fail
                 i -= 1;
-                println!("Error setting background image: {:?}", e);
+                println!("Error setting background image");
             }
         } else if !blur && i != 0 {
             i -= 1;
-            let result;
+            let mut success = false;
             if i == 0 {
                 println!("Setting {:?}", bg_path);
-                result = std::process::Command::new("feh")
+                if let Ok(mut handle) = std::process::Command::new("feh")
                     .arg("--bg-fill")
                     .arg(&bg_path)
-                    .spawn();
+                    .spawn()
+                {
+                    match handle.wait() {
+                        Ok(_) =>  success = true,
+                        Err(_) => success = false
+                    }
+                }
             } else {
                 bg_current.set_file_name((i - 1).to_string());
                 bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
                 println!("Setting {:?}", bg_current);
-                result = std::process::Command::new("feh")
+                if let Ok(mut handle) = std::process::Command::new("feh")
                     .arg("--bg-fill")
                     .arg(&bg_current)
-                    .spawn();
+                    .spawn()
+                {
+                    match handle.wait() {
+                        Ok(_) =>  success = true,
+                        Err(_) => success = false
+                    }
+                }
             }
 
-            if let Err(e) = result {
+            if !success {
                 // Reset i in case of feh fail
                 i += 1;
-                println!("Error setting background image: {:?}", e);
+                println!("Error setting background image");
             }
         }
 
