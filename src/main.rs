@@ -1,17 +1,15 @@
-extern crate i3ipc;
 extern crate image;
 
-use std::env;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
-use std::sync::Arc;
-use std::thread;
-
-use i3ipc::{
-    event::{inner::*, Event},
-    reply::NodeType,
-    I3Connection, I3EventListener, Subscription,
+use std::{
+    env,
+    path::{Path, PathBuf},
+    sync::mpsc::channel,
+    sync::Arc,
+    thread,
 };
+
+mod i3_listener;
+mod worker;
 
 fn main() {
     let home = env::home_dir().expect("Can't get home directory"); // home
@@ -73,171 +71,14 @@ fn main() {
 
         let (send, recv) = channel();
         let listener = thread::spawn(move || {
-            listen(send);
+            i3_listener::listen(send);
         });
 
         let worker = thread::spawn(move || {
-            work(recv, PathBuf::from(bg_path), transitions);
+            worker::work(recv, PathBuf::from(bg_path), transitions);
         });
 
         println!("Main: Listener joined: {:?}", listener.join());
         println!("Main: Worker joined: {:?}", worker.join());
-    }
-}
-
-fn current_workspace_is_empty(connection: &mut I3Connection) -> bool {
-    let outputs = connection.get_tree().unwrap().nodes;
-    for output in outputs {
-        for section in &output.nodes {
-            if let NodeType::Con = section.nodetype {
-                for workspace in &section.nodes {
-                    if workspace.focused && workspace.nodes.is_empty() {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    false
-}
-
-fn work(receiver: Receiver<bool>, bg_path: PathBuf, transitions: u8) {
-    println!("Worker created");
-
-    let home = env::home_dir().expect("Can't get home directory"); // home
-    let mut bg_current = home.as_path().join(Path::new(".cache/i3-bg-blur/filename"));
-
-    let mut blur = false;
-    let mut i = 0;
-
-    loop {
-        match receiver.try_recv() {
-            Ok(state) => {
-                blur = state;
-                println!("Worker Ok: {}", state);
-            }
-            Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => return,
-        }
-
-        if blur && i != transitions {
-            i += 1;
-            bg_current.set_file_name((i - 1).to_string());
-            bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
-            println!("Setting {:?}", bg_current);
-            let mut success = false;
-            if let Ok(mut handle) = std::process::Command::new("feh")
-                .arg("--bg-fill")
-                .arg(&bg_current)
-                .spawn()
-            {
-                match handle.wait() {
-                    Ok(_) =>  success = true,
-                    Err(_) => success = false
-                }
-            }
-            if !success {
-                // Reset i in case of feh fail
-                i -= 1;
-                println!("Error setting background image");
-            }
-        } else if !blur && i != 0 {
-            i -= 1;
-            let mut success = false;
-            if i == 0 {
-                println!("Setting {:?}", bg_path);
-                if let Ok(mut handle) = std::process::Command::new("feh")
-                    .arg("--bg-fill")
-                    .arg(&bg_path)
-                    .spawn()
-                {
-                    match handle.wait() {
-                        Ok(_) =>  success = true,
-                        Err(_) => success = false
-                    }
-                }
-            } else {
-                bg_current.set_file_name((i - 1).to_string());
-                bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
-                println!("Setting {:?}", bg_current);
-                if let Ok(mut handle) = std::process::Command::new("feh")
-                    .arg("--bg-fill")
-                    .arg(&bg_current)
-                    .spawn()
-                {
-                    match handle.wait() {
-                        Ok(_) =>  success = true,
-                        Err(_) => success = false
-                    }
-                }
-            }
-
-            if !success {
-                // Reset i in case of feh fail
-                i += 1;
-                println!("Error setting background image");
-            }
-        }
-
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-}
-
-fn listen(sender: Sender<bool>) {
-    println!("Listener created");
-
-    let mut i3_connection = I3Connection::connect().expect("Unable to create connection");
-    let mut i3_listener = I3EventListener::connect().expect("Unable to create listener");
-
-    let mut send_result;
-    if current_workspace_is_empty(&mut i3_connection) {
-        send_result = sender.send(false);
-    } else {
-        send_result = sender.send(true);
-    }
-
-    let subscriptions = [Subscription::Workspace, Subscription::Window];
-    i3_listener
-        .subscribe(&subscriptions)
-        .expect("Unable to subscribe");
-
-    for event in i3_listener.listen() {
-        if let Err(e) = send_result {
-            println!("Send error in listener: {}\nExiting thread", e);
-        }
-
-        match event {
-            Ok(Event::WindowEvent(event)) => match event.change {
-                WindowChange::Close => {
-                    if current_workspace_is_empty(&mut i3_connection) {
-                        send_result = sender.send(false);
-                    }
-                }
-                WindowChange::Focus => {
-                    send_result = sender.send(true);
-                }
-                _ => continue,
-            },
-            Ok(Event::WorkspaceEvent(event)) => match event.change {
-                WorkspaceChange::Focus => {
-                    if event
-                        .current
-                        .expect("Failed getting current workspace")
-                        .nodes
-                        .is_empty()
-                    {
-                        send_result = sender.send(false);
-                    } else {
-                        send_result = sender.send(true);
-                    }
-                }
-                _ => continue,
-            },
-            Err(e) => {
-                println!("Listener error: {}", e);
-                return;
-            }
-            _ => unreachable!(),
-        }
     }
 }
