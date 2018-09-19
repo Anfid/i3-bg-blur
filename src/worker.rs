@@ -1,5 +1,5 @@
+use dirs;
 use std::{
-    env,
     path::{Path, PathBuf},
     process::Command,
     sync::mpsc::{Receiver, TryRecvError},
@@ -7,80 +7,79 @@ use std::{
     time::Duration,
 };
 
-pub fn work(receiver: Receiver<bool>, bg_path: PathBuf, transitions: u8) {
+pub fn work(receiver: Receiver<bool>, bg_path: &PathBuf, transitions: u8) {
     println!("Worker created");
 
-    let home = env::home_dir().expect("Can't get home directory"); // home
-    let mut bg_current = home.as_path().join(Path::new(".cache/i3-bg-blur/filename"));
+    let bg_cache = dirs::cache_dir()
+        .expect("Can't get cache directory")
+        .as_path()
+        .join(Path::new("i3-bg-blur/filename"));
 
-    let mut blur = false;
+    let mut do_blur = false;
     let mut i = 0;
 
     loop {
         match receiver.try_recv() {
             Ok(state) => {
-                blur = state;
+                do_blur = state;
                 println!("Worker Ok: {}", state);
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => return,
         }
 
-        if blur && i != transitions {
+        let old_i = i;
+        let bg = if do_blur && i != transitions {
             i += 1;
-            bg_current.set_file_name((i - 1).to_string());
-            bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
-            println!("Setting {:?}", bg_current);
-            let mut success = false;
-            if let Ok(mut handle) = Command::new("feh")
-                .arg("--bg-fill")
-                .arg(&bg_current)
-                .spawn()
-            {
-                match handle.wait() {
-                    Ok(_) => success = true,
-                    Err(_) => success = false,
-                }
-            }
-            if !success {
-                // Reset i in case of feh fail
-                i -= 1;
-                println!("Error setting background image");
-            }
-        } else if !blur && i != 0 {
+            Some(
+                bg_cache
+                    .with_file_name(i.to_string())
+                    .with_extension(bg_path.extension().unwrap().to_os_string()),
+            )
+        } else if !do_blur && i != 0 {
             i -= 1;
-            let mut success = false;
             if i == 0 {
-                println!("Setting {:?}", bg_path);
-                if let Ok(mut handle) = Command::new("feh").arg("--bg-fill").arg(&bg_path).spawn() {
-                    match handle.wait() {
-                        Ok(_) => success = true,
-                        Err(_) => success = false,
-                    }
-                }
+                // Set unblured
+                Some(PathBuf::from(&bg_path))
             } else {
-                bg_current.set_file_name((i - 1).to_string());
-                bg_current.set_extension(bg_path.extension().unwrap().to_os_string());
-                println!("Setting {:?}", bg_current);
-                if let Ok(mut handle) = Command::new("feh")
-                    .arg("--bg-fill")
-                    .arg(&bg_current)
-                    .spawn()
-                {
-                    match handle.wait() {
-                        Ok(_) => success = true,
-                        Err(_) => success = false,
-                    }
-                }
+                Some(
+                    bg_cache
+                        .with_file_name(i.to_string())
+                        .with_extension(bg_path.extension().unwrap().to_os_string()),
+                )
             }
+        } else {
+            None
+        };
 
-            if !success {
+        if let Some(bg) = bg {
+            if let Err(_e) = set_bg(&bg) {
                 // Reset i in case of feh fail
-                i += 1;
                 println!("Error setting background image");
+                i = old_i;
             }
+        } else {
+            thread::sleep(Duration::from_millis(100));
         }
+    }
+}
 
-        thread::sleep(Duration::from_millis(100));
+fn set_bg(bg_path: &PathBuf) -> Result<(), i32> {
+    println!("Setting {:?}", bg_path);
+
+    let result = Command::new("feh")
+        .arg("--bg-fill")
+        .arg(&bg_path)
+        .spawn()
+        .expect("Failed to start feh")
+        .wait()
+        .expect("Failed to start feh");
+
+    if result.success() {
+        Ok(())
+    } else if let Some(c) = result.code() {
+        Err(c)
+    } else {
+        Err(125) // Canceled
     }
 }

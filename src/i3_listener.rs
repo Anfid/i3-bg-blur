@@ -13,12 +13,11 @@ pub fn listen(sender: Sender<bool>) {
     let mut i3_connection = I3Connection::connect().expect("Unable to create connection");
     let mut i3_listener = I3EventListener::connect().expect("Unable to create listener");
 
-    let mut send_result;
-    if current_workspace_is_empty(&mut i3_connection) {
-        send_result = sender.send(false);
+    let mut send_result = if current_workspace_is_empty(&mut i3_connection) {
+        sender.send(false)
     } else {
-        send_result = sender.send(true);
-    }
+        sender.send(true)
+    };
 
     let subscriptions = [Subscription::Workspace, Subscription::Window];
     i3_listener

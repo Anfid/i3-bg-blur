@@ -1,3 +1,4 @@
+extern crate dirs;
 extern crate image;
 
 use std::{
@@ -12,7 +13,7 @@ mod i3_listener;
 mod worker;
 
 fn main() {
-    let home = env::home_dir().expect("Can't get home directory"); // home
+    let home = dirs::home_dir().expect("Can't get home directory"); // home
     let transitions: u8 = 3; // TODO: read from args
 
     for arg in env::args() {
@@ -39,35 +40,7 @@ fn main() {
 
         println!("Current background image: {:?}", bg_path);
 
-        {
-            let bg = Arc::new(image::open(&bg_path).unwrap());
-
-            let threads: Vec<_> = (0..transitions)
-                .map(|i| {
-                    let bg = bg.clone();
-                    let mut blured_path = home.clone();
-                    let bg_ext = bg_path.extension().unwrap().to_os_string();
-
-                    thread::spawn(move || {
-                        let blured = bg.blur(12.0 / transitions as f32 * (i + 1) as f32);
-                        blured_path = blured_path.join(".cache/i3-bg-blur/filename"); // Filename gets stripped with set_file_name()
-                        blured_path.set_file_name(i.to_string());
-                        blured_path.set_extension(bg_ext);
-                        println!(
-                            "Blur for {}; Path: {:?}",
-                            12.0 / transitions as f32 * (i + 1) as f32,
-                            blured_path
-                        );
-                        println!("{:?}", blured.save(Path::new(blured_path.as_path())));
-                        println!("{}", i);
-                    })
-                })
-                .collect();
-
-            for thread in threads {
-                thread.join().unwrap();
-            }
-        }
+        blur_images(&bg_path, transitions);
 
         let (send, recv) = channel();
         let listener = thread::spawn(move || {
@@ -75,10 +48,39 @@ fn main() {
         });
 
         let worker = thread::spawn(move || {
-            worker::work(recv, PathBuf::from(bg_path), transitions);
+            worker::work(recv, &bg_path, transitions);
         });
 
         println!("Main: Listener joined: {:?}", listener.join());
         println!("Main: Worker joined: {:?}", worker.join());
+    }
+}
+
+fn blur_images(bg_path: &PathBuf, transitions: u8) {
+    let bg = Arc::new(image::open(&bg_path).unwrap());
+
+    let threads: Vec<_> = (0..transitions)
+        .map(|i| {
+            let bg = bg.clone();
+            let bg_ext = bg_path.extension().unwrap().to_os_string();
+
+            thread::spawn(move || {
+                let blured = bg.blur(12.0 / f32::from(transitions) * f32::from(i + 1));
+                let mut blured_path = dirs::cache_dir()
+                    .expect("Can't get cache directory")
+                    .join("i3-bg-blur/filename"); // Filename gets stripped with set_file_name()
+                blured_path.set_file_name((i + 1).to_string());
+                blured_path.set_extension(bg_ext);
+                println!(
+                    "Blur for {}; Path: {:?}",
+                    12.0 / f32::from(transitions) * f32::from(i + 1),
+                    blured_path
+                );
+                blured.save(Path::new(blured_path.as_path()));
+            })
+        }).collect();
+
+    for thread in threads {
+        thread.join().unwrap();
     }
 }
