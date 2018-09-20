@@ -1,11 +1,15 @@
+#[macro_use(load_yaml)]
+extern crate clap;
 extern crate dirs;
 extern crate image;
+#[macro_use]
+extern crate log;
+extern crate stderrlog;
 
+use clap::App;
 use std::{
-    env,
     path::{Path, PathBuf},
     sync::mpsc::channel,
-    sync::Arc,
     thread,
 };
 
@@ -13,18 +17,50 @@ mod i3_listener;
 mod worker;
 
 fn main() {
-    let home = dirs::home_dir().expect("Can't get home directory"); // home
-    let transitions: u8 = 3; // TODO: read from args
+    let yaml = load_yaml!("args.yaml");
+    let matches = App::from_yaml(yaml).get_matches();
+    let verbosity = match matches.occurrences_of("verbose") {
+        0 => 1,
+        1 => {
+            println!("Log level: info");
+            2
+        }
+        2 => {
+            println!("Log level: debug");
+            3
+        }
+        3 | _ => {
+            println!("Log level: trace");
+            4
+        }
+    };
+    let quiet = matches.is_present("quiet");
+    stderrlog::new()
+        .color(stderrlog::ColorChoice::Auto)
+        .timestamp(stderrlog::Timestamp::Second)
+        .verbosity(verbosity)
+        .quiet(quiet)
+        .init()
+        .unwrap(); // Err only if stderrlog is already initialized
 
-    for arg in env::args() {
-        // TODO: argparse
-        println!("{}", arg);
-    }
+    let transitions = match matches.value_of("transitions").unwrap_or("3").parse::<u8>() {
+        Ok(value) => value,
+        Err(e) => {
+            error!("Unable to set transitions: {}", e);
+            std::process::exit(22); // Invalid argument err code
+        }
+    };
+    let sigma = match matches.value_of("sigma").unwrap_or("12.0").parse::<f32>() {
+        Ok(value) => value,
+        Err(e) => {
+            error!("Unable to set sigma: {}", e);
+            std::process::exit(22); // Invalid argument err code
+        }
+    };
 
-    std::fs::create_dir_all(home.join(".cache/i3-bg-blur"))
-        .expect("Error while creating cache dir");
-
-    let bg_path_file_path = home.as_path().join(Path::new(".cache/wal/wal"));
+    let bg_path_file_path = dirs::cache_dir()
+        .expect("Can't get cache directory")
+        .join(Path::new("wal/wal"));
 
     loop {
         // Give time for i3 to load and wal to set wallpaper
@@ -33,14 +69,14 @@ fn main() {
         let bg_path = match std::fs::read_to_string(&bg_path_file_path) {
             Ok(r) => PathBuf::from(r),
             Err(e) => {
-                println!("Error reading {:?}: {}", &bg_path_file_path, e);
+                warn!("Unable to read {:?}: {}", &bg_path_file_path, e);
                 continue;
             }
         };
 
-        println!("Current background image: {:?}", bg_path);
+        info!("Current background image: {:?}", bg_path);
 
-        blur_images(&bg_path, transitions);
+        blur_images(&bg_path, transitions, sigma);
 
         let (send, recv) = channel();
         let listener = thread::spawn(move || {
@@ -51,13 +87,28 @@ fn main() {
             worker::work(recv, &bg_path, transitions);
         });
 
-        println!("Main: Listener joined: {:?}", listener.join());
-        println!("Main: Worker joined: {:?}", worker.join());
+        let listener_result = listener.join();
+        let worker_result = worker.join();
+        debug!("Listener thread joined: {:?}", listener_result);
+        debug!("Worker thread joined: {:?}", worker_result);
     }
 }
 
-fn blur_images(bg_path: &PathBuf, transitions: u8) {
-    let bg = Arc::new(image::open(&bg_path).unwrap());
+fn blur_images(bg_path: &PathBuf, transitions: u8, sigma: f32) {
+    let blur_cache_dir = dirs::cache_dir()
+        .expect("Can't get cache directory")
+        .join("i3-bg-blur");
+    if let Err(e) = std::fs::remove_dir_all(&blur_cache_dir) {
+        info!("Can not clear cache directory: {}", e);
+    } else {
+        trace!("Removed old cache directory");
+    }
+    if let Err(e) = std::fs::create_dir_all(&blur_cache_dir) {
+        error!("Can not create directory {:?}: {}", blur_cache_dir, e);
+        panic!();
+    }
+
+    let bg = image::open(&bg_path).unwrap();
 
     let threads: Vec<_> = (0..transitions)
         .map(|i| {
@@ -65,22 +116,23 @@ fn blur_images(bg_path: &PathBuf, transitions: u8) {
             let bg_ext = bg_path.extension().unwrap().to_os_string();
 
             thread::spawn(move || {
-                let blured = bg.blur(12.0 / f32::from(transitions) * f32::from(i + 1));
+                let blur_strength = sigma / f32::from(transitions) * f32::from(i + 1);
+                trace!("Started blur with sigma {}", blur_strength);
+                let blured = bg.blur(blur_strength);
                 let mut blured_path = dirs::cache_dir()
                     .expect("Can't get cache directory")
                     .join("i3-bg-blur/filename"); // Filename gets stripped with set_file_name()
                 blured_path.set_file_name((i + 1).to_string());
                 blured_path.set_extension(bg_ext);
-                println!(
-                    "Blur for {}; Path: {:?}",
-                    12.0 / f32::from(transitions) * f32::from(i + 1),
-                    blured_path
-                );
-                blured.save(Path::new(blured_path.as_path()));
+                trace!("Finished blur with sigma {}", blur_strength);
+                blured
+                    .save(Path::new(blured_path.as_path()))
+                    .expect("Can't save blured image");
             })
         }).collect();
 
     for thread in threads {
         thread.join().unwrap();
     }
+    info!("Finished bluring images");
 }

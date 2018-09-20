@@ -8,7 +8,7 @@ use std::{
 };
 
 pub fn work(receiver: Receiver<bool>, bg_path: &PathBuf, transitions: u8) {
-    println!("Worker created");
+    debug!("Worker created");
 
     let bg_cache = dirs::cache_dir()
         .expect("Can't get cache directory")
@@ -22,10 +22,13 @@ pub fn work(receiver: Receiver<bool>, bg_path: &PathBuf, transitions: u8) {
         match receiver.try_recv() {
             Ok(state) => {
                 do_blur = state;
-                println!("Worker Ok: {}", state);
+                trace!("Worker received Ok({})", state);
             }
             Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => return,
+            Err(TryRecvError::Disconnected) => {
+                debug!("Worker received Err(Disconnected)");
+                return;
+            }
         }
 
         let old_i = i;
@@ -53,9 +56,9 @@ pub fn work(receiver: Receiver<bool>, bg_path: &PathBuf, transitions: u8) {
         };
 
         if let Some(bg) = bg {
-            if let Err(_e) = set_bg(&bg) {
+            if let Err(e) = set_bg(&bg) {
                 // Reset i in case of feh fail
-                println!("Error setting background image");
+                warn!("Unable to set background image. Exit code: {}", e);
                 i = old_i;
             }
         } else {
@@ -65,7 +68,7 @@ pub fn work(receiver: Receiver<bool>, bg_path: &PathBuf, transitions: u8) {
 }
 
 fn set_bg(bg_path: &PathBuf) -> Result<(), i32> {
-    println!("Setting {:?}", bg_path);
+    debug!("Setting background image: {:?}", bg_path);
 
     let result = Command::new("feh")
         .arg("--bg-fill")
@@ -77,9 +80,7 @@ fn set_bg(bg_path: &PathBuf) -> Result<(), i32> {
 
     if result.success() {
         Ok(())
-    } else if let Some(c) = result.code() {
-        Err(c)
     } else {
-        Err(125) // Canceled
+        Err(result.code().unwrap_or(125))
     }
 }

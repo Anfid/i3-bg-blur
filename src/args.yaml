@@ -1,0 +1,26 @@
+name: i3-bg-blur
+version: "v0.1.0"
+author: Mikhail Pogretskiy <mikhail.pogretskiy@gmail.com>
+about: Blurs background image if any window is focused when using i3wm
+args:
+    - transitions:
+        short: t
+        long: transitions
+        value_name: NUMBER
+        help: "Amount of transitions between unblured and fully blured background. Default: 3"
+        takes_value: true
+    - sigma:
+        short: s
+        long: sigma
+        value_name: FLOAT
+        help: "Indicates maximum blur strength. Higher value blurs stronger. Note that high values may take a long time to process. Default: 12.0"
+        takes_value: true
+    - verbose:
+        short: v
+        multiple: true
+        help: Sets the level of verbosity
+    - quiet:
+        short: q
+        long: quiet
+        conflicts_with: verbose
+        help: Disables all logging

@@ -8,7 +8,7 @@ use self::i3ipc::{
 use std::sync::mpsc::Sender;
 
 pub fn listen(sender: Sender<bool>) {
-    println!("Listener created");
+    debug!("i3 Listener created");
 
     let mut i3_connection = I3Connection::connect().expect("Unable to create connection");
     let mut i3_listener = I3EventListener::connect().expect("Unable to create listener");
@@ -26,7 +26,8 @@ pub fn listen(sender: Sender<bool>) {
 
     for event in i3_listener.listen() {
         if let Err(e) = send_result {
-            println!("Send error in listener: {}\nExiting thread", e);
+            warn!("Listener unable to send state: {}", e);
+            warn!("Listener exiting");
         }
 
         match event {
@@ -57,7 +58,7 @@ pub fn listen(sender: Sender<bool>) {
                 _ => continue,
             },
             Err(e) => {
-                println!("Listener error: {}", e);
+                warn!("Listener unable to get event: {}", e);
                 return;
             }
             _ => unreachable!(),
