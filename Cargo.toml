@@ -1,6 +1,6 @@
 [package]
 name = "i3-bg-blur"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Mikhail Pogretskiy <mikhail.pogretskiy@gmail.com>"]
 description = "Blurs the background image in the i3wm if any window is focused"
 repository = "https://github.com/Anfid/i3-bg-blur"
@@ -11,5 +11,5 @@ clap  = {version = "^2.32", features = ["yaml"]}
 dirs  = "^1.0.3"
 image = "^0.19"
 i3ipc = "^0.8"
-stderrlog = "*"
-log = "*"
+stderrlog = "^0.4"
+log = "^0.3"

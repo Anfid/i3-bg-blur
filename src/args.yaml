@@ -1,5 +1,5 @@
 name: i3-bg-blur
-version: "v0.1.0"
+version: "v0.2.0"
 author: Mikhail Pogretskiy <mikhail.pogretskiy@gmail.com>
 about: Blurs background image if any window is focused when using i3wm
 args:
